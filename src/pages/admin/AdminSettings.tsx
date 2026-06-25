@@ -1,9 +1,13 @@
 import { useState } from 'react'
-import { Save, Store, Bell, Shield } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
+import { Save, Store, Bell, Shield, LogOut } from 'lucide-react'
+import { useAuth } from '../../contexts/AuthContext'
 import toast from 'react-hot-toast'
 
 export default function AdminSettings() {
-  const [storeName, setStoreName] = useState('LIT GANG')
+  const navigate = useNavigate()
+  const { logout } = useAuth()
+  const [storeName, setStoreName] = useState('Your Store')
   const [whatsappNumber, setWhatsappNumber] = useState('2348012345678')
   const [currency, setCurrency] = useState('NGN')
   const [emailNotifications, setEmailNotifications] = useState(true)
@@ -11,6 +15,11 @@ export default function AdminSettings() {
 
   const handleSave = () => {
     toast.success('Settings saved!')
+  }
+
+  const handleLogout = () => {
+    logout()
+    toast.success('Logged out successfully')
   }
 
   return (
@@ -101,8 +110,17 @@ export default function AdminSettings() {
             <h2 className="font-semibold dark:text-white">Security</h2>
           </div>
 
-          <button className="text-sm text-blue-600 hover:underline">
+          <button className="text-sm text-blue-600 hover:underline mb-4 block">
             Change admin password
+          </button>
+
+          {/* Logout Button */}
+          <button
+            onClick={handleLogout}
+            className="flex items-center gap-2 px-4 py-2.5 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+          >
+            <LogOut className="w-4 h-4" />
+            Log Out
           </button>
         </div>
 

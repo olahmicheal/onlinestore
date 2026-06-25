@@ -26,22 +26,17 @@ const CartContext = createContext<CartContextType | undefined>(undefined)
 
 export function CartProvider({ children }: { children: ReactNode }) {
   const [items, setItems] = useState<CartItem[]>(() => {
-    const saved = localStorage.getItem('litgang-cart')
+    const saved = localStorage.getItem('store-cart')
     return saved ? JSON.parse(saved) : []
   })
   const [isCartOpen, setIsCartOpen] = useState(false)
-
-  const saveItems = useCallback((newItems: CartItem[]) => {
-    setItems(newItems)
-    localStorage.setItem('litgang-cart', JSON.stringify(newItems))
-  }, [])
 
   const addItem = useCallback((item: Omit<CartItem, 'quantity'>) => {
     setItems(prev => {
       const existing = prev.find(i => i.productId === item.productId && i.size === item.size)
       let newItems: CartItem[]
       if (existing) {
-        newItems = prev.map(i => 
+        newItems = prev.map(i =>
           i.productId === item.productId && i.size === item.size
             ? { ...i, quantity: i.quantity + 1 }
             : i
@@ -49,7 +44,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
       } else {
         newItems = [...prev, { ...item, quantity: 1 }]
       }
-      localStorage.setItem('litgang-cart', JSON.stringify(newItems))
+      localStorage.setItem('store-cart', JSON.stringify(newItems))
       toast.success('Added to cart!')
       return newItems
     })
@@ -58,7 +53,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
   const removeItem = useCallback((productId: string, size: string) => {
     setItems(prev => {
       const newItems = prev.filter(i => !(i.productId === productId && i.size === size))
-      localStorage.setItem('litgang-cart', JSON.stringify(newItems))
+      localStorage.setItem('store-cart', JSON.stringify(newItems))
       return newItems
     })
   }, [])
@@ -69,29 +64,26 @@ export function CartProvider({ children }: { children: ReactNode }) {
       return
     }
     setItems(prev => {
-      const newItems = prev.map(i => 
+      const newItems = prev.map(i =>
         i.productId === productId && i.size === size
           ? { ...i, quantity }
           : i
       )
-      localStorage.setItem('litgang-cart', JSON.stringify(newItems))
+      localStorage.setItem('store-cart', JSON.stringify(newItems))
       return newItems
     })
   }, [removeItem])
 
   const clearCart = useCallback(() => {
     setItems([])
-    localStorage.removeItem('litgang-cart')
+    localStorage.removeItem('store-cart')
   }, [])
 
   const totalItems = items.reduce((sum, item) => sum + item.quantity, 0)
   const subtotal = items.reduce((sum, item) => sum + item.price * item.quantity, 0)
 
   return (
-    <CartContext.Provider value={{
-      items, addItem, removeItem, updateQuantity, clearCart,
-      totalItems, subtotal, isCartOpen, setIsCartOpen
-    }}>
+    <CartContext.Provider value={{ items, addItem, removeItem, updateQuantity, clearCart, totalItems, subtotal, isCartOpen, setIsCartOpen }}>
       {children}
     </CartContext.Provider>
   )
