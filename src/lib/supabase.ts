@@ -13,10 +13,15 @@ export interface Product {
   price: number
   original_price: number | null
   image_url: string
+  images: string[]
   sizes: string[]
+  size_stock: Record<string, number>
   badge: string | null
   description: string
-  stock: number
+  stock: number  // OLD column - kept for backward compatibility
+  is_preorder: boolean
+  preorder_date: string | null
+  preorder_message: string | null
   is_active: boolean
   created_at: string
   updated_at: string
@@ -68,6 +73,27 @@ export interface AdminUser {
   created_at: string
 }
 
+// Helper to normalize product data (handles old stock vs new size_stock)
+function normalizeProduct(product: any): Product {
+  // If size_stock is empty but stock exists, create a fallback
+  const hasSizeStock = product.size_stock && Object.keys(product.size_stock).length > 0
+  const size_stock = hasSizeStock
+    ? product.size_stock
+    : product.sizes?.reduce((acc: Record<string, number>, size: string) => {
+        acc[size] = product.stock || 0
+        return acc
+      }, {}) || {}
+
+  return {
+    ...product,
+    size_stock,
+    images: product.images || [],
+    is_preorder: product.is_preorder || false,
+    preorder_date: product.preorder_date || null,
+    preorder_message: product.preorder_message || null,
+  }
+}
+
 // Database helper functions
 export const db = {
   // Products
@@ -83,25 +109,36 @@ export const db = {
 
     const { data, error } = await query
     if (error) throw error
-    return data as Product[]
+    return (data || []).map(normalizeProduct) as Product[]
   },
 
   async getProduct(id: string) {
     const { data, error } = await supabase.from('products').select('*').eq('id', id).single()
     if (error) throw error
-    return data as Product
+    return normalizeProduct(data) as Product
   },
 
-  async createProduct(product: Omit<Product, 'id' | 'created_at' | 'updated_at'>) {
-    const { data, error } = await supabase.from('products').insert(product).select().single()
+  async createProduct(product: Omit<Product, 'id' | 'created_at' | 'updated_at' | 'stock'>) {
+    // When creating, also update the old stock column for backward compatibility
+    const totalStock = Object.values(product.size_stock || {}).reduce((a, b) => a + b, 0)
+    const dataWithStock = {
+      ...product,
+      stock: totalStock,
+    }
+    const { data, error } = await supabase.from('products').insert(dataWithStock).select().single()
     if (error) throw error
-    return data as Product
+    return normalizeProduct(data) as Product
   },
 
   async updateProduct(id: string, updates: Partial<Product>) {
-    const { data, error } = await supabase.from('products').update(updates).eq('id', id).select().single()
+    // When updating, also sync the old stock column
+    const updateData = { ...updates }
+    if (updates.size_stock) {
+      updateData.stock = Object.values(updates.size_stock).reduce((a, b) => a + b, 0)
+    }
+    const { data, error } = await supabase.from('products').update(updateData).eq('id', id).select().single()
     if (error) throw error
-    return data as Product
+    return normalizeProduct(data) as Product
   },
 
   async deleteProduct(id: string) {
@@ -109,8 +146,34 @@ export const db = {
     if (error) throw error
   },
 
+  // Image Upload
+  async uploadImage(file: File): Promise<string> {
+    const fileExt = file.name.split('.').pop()
+    const fileName = `${Date.now()}-${Math.random().toString(36).substring(2)}.${fileExt}`
+    const filePath = `${fileName}`
+
+    const { error: uploadError } = await supabase.storage
+      .from('product-images')
+      .upload(filePath, file, { cacheControl: '3600', upsert: false })
+
+    if (uploadError) throw uploadError
+
+    const { data: { publicUrl } } = supabase.storage
+      .from('product-images')
+      .getPublicUrl(filePath)
+
+    return publicUrl
+  },
+
+  async deleteImage(url: string) {
+    const path = url.split('/').pop()
+    if (!path) return
+    const { error } = await supabase.storage.from('product-images').remove([path])
+    if (error) throw error
+  },
+
   // Orders
-  async createOrder(order: Omit<Order, 'id' | 'created_at' | 'updated_at' | 'status'>) {
+  async createOrder(order: Omit<Order, 'id' | 'status' | 'created_at' | 'updated_at'>) {
     const { data, error } = await supabase.from('orders').insert({
       ...order,
       status: 'pending'
@@ -132,7 +195,7 @@ export const db = {
   },
 
   // Complaints
-  async createComplaint(complaint: Omit<Complaint, 'id' | 'created_at' | 'updated_at' | 'status'>) {
+  async createComplaint(complaint: Omit<Complaint, 'id' | 'status' | 'created_at' | 'updated_at'>) {
     const { data, error } = await supabase.from('complaints').insert({
       ...complaint,
       status: 'open'
