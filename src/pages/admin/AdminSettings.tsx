@@ -1,20 +1,78 @@
-import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { Save, Store, Bell, Shield, LogOut } from 'lucide-react'
+import { useState, useEffect } from 'react'
+import { Save, Store, Bell, Shield, LogOut, CreditCard, MessageCircle } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
+import { db, type StoreSettings, type PaymentSettings } from '../../lib/supabase'
 import toast from 'react-hot-toast'
 
 export default function AdminSettings() {
-  const navigate = useNavigate()
   const { logout } = useAuth()
+
+  // Store settings
   const [storeName, setStoreName] = useState('Your Store')
   const [whatsappNumber, setWhatsappNumber] = useState('2348012345678')
   const [currency, setCurrency] = useState('NGN')
+
+  // Payment settings
+  const [bankName, setBankName] = useState('First Bank')
+  const [accountName, setAccountName] = useState('Your Store Ltd')
+  const [accountNumber, setAccountNumber] = useState('1234567890')
+  const [additionalInfo, setAdditionalInfo] = useState('Please include your order ID as reference')
+
+  // Notification settings
   const [emailNotifications, setEmailNotifications] = useState(true)
   const [orderNotifications, setOrderNotifications] = useState(true)
 
-  const handleSave = () => {
-    toast.success('Settings saved!')
+  const [loading, setLoading] = useState(false)
+
+  useEffect(() => {
+    loadSettings()
+  }, [])
+
+  const loadSettings = async () => {
+    try {
+      const store = await db.getSettings('store') as StoreSettings
+      const payment = await db.getSettings('payment') as PaymentSettings
+
+      if (store) {
+        setStoreName(store.name || 'Your Store')
+        setWhatsappNumber(store.whatsapp || '2348012345678')
+        setCurrency(store.currency || 'NGN')
+      }
+
+      if (payment) {
+        setBankName(payment.bank_name || 'First Bank')
+        setAccountName(payment.account_name || 'Your Store Ltd')
+        setAccountNumber(payment.account_number || '1234567890')
+        setAdditionalInfo(payment.additional_info || 'Please include your order ID as reference')
+      }
+    } catch (err) {
+      console.error('Failed to load settings:', err)
+    }
+  }
+
+  const handleSave = async () => {
+    setLoading(true)
+    try {
+      await db.updateSettings('store', {
+        name: storeName,
+        whatsapp: whatsappNumber,
+        currency,
+      })
+
+      await db.updateSettings('payment', {
+        bank_name: bankName,
+        account_name: accountName,
+        account_number: accountNumber,
+        additional_info: additionalInfo,
+      })
+
+      toast.success('Settings saved!')
+    } catch (err) {
+      toast.error('Failed to save settings')
+      console.error(err)
+    } finally {
+      setLoading(false)
+    }
   }
 
   const handleLogout = () => {
@@ -47,13 +105,17 @@ export default function AdminSettings() {
               />
             </div>
             <div>
-              <label className="text-sm font-medium dark:text-gray-300">WhatsApp Number</label>
+              <label className="text-sm font-medium dark:text-gray-300 flex items-center gap-1">
+                <MessageCircle className="w-3 h-3" /> WhatsApp Number
+              </label>
               <input
                 type="text"
                 value={whatsappNumber}
                 onChange={e => setWhatsappNumber(e.target.value)}
                 className="w-full mt-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-white focus:outline-none focus:ring-2 focus:ring-gray-900"
+                placeholder="2348012345678"
               />
+              <p className="text-xs text-gray-500 mt-1">Format: 2348012345678 (no + sign)</p>
             </div>
             <div>
               <label className="text-sm font-medium dark:text-gray-300">Currency</label>
@@ -66,6 +128,59 @@ export default function AdminSettings() {
                 <option value="USD">US Dollar ($)</option>
                 <option value="GBP">British Pound (£)</option>
               </select>
+            </div>
+          </div>
+        </div>
+
+        {/* Payment Settings */}
+        <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center">
+              <CreditCard className="w-5 h-5 text-green-600" />
+            </div>
+            <h2 className="font-semibold dark:text-white">Payment Details</h2>
+          </div>
+
+          <div className="space-y-4">
+            <div>
+              <label className="text-sm font-medium dark:text-gray-300">Bank Name</label>
+              <input
+                type="text"
+                value={bankName}
+                onChange={e => setBankName(e.target.value)}
+                className="w-full mt-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-white focus:outline-none focus:ring-2 focus:ring-gray-900"
+                placeholder="First Bank"
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium dark:text-gray-300">Account Name</label>
+              <input
+                type="text"
+                value={accountName}
+                onChange={e => setAccountName(e.target.value)}
+                className="w-full mt-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-white focus:outline-none focus:ring-2 focus:ring-gray-900"
+                placeholder="Your Store Ltd"
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium dark:text-gray-300">Account Number</label>
+              <input
+                type="text"
+                value={accountNumber}
+                onChange={e => setAccountNumber(e.target.value)}
+                className="w-full mt-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-white focus:outline-none focus:ring-2 focus:ring-gray-900"
+                placeholder="1234567890"
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium dark:text-gray-300">Additional Info</label>
+              <textarea
+                value={additionalInfo}
+                onChange={e => setAdditionalInfo(e.target.value)}
+                rows={2}
+                className="w-full mt-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-white focus:outline-none focus:ring-2 focus:ring-gray-900"
+                placeholder="Instructions for customers..."
+              />
             </div>
           </div>
         </div>
@@ -114,7 +229,6 @@ export default function AdminSettings() {
             Change admin password
           </button>
 
-          {/* Logout Button */}
           <button
             onClick={handleLogout}
             className="flex items-center gap-2 px-4 py-2.5 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
@@ -126,10 +240,11 @@ export default function AdminSettings() {
 
         <button
           onClick={handleSave}
-          className="flex items-center gap-2 px-6 py-3 bg-gray-900 text-white rounded-xl hover:opacity-90 transition-opacity"
+          disabled={loading}
+          className="flex items-center gap-2 px-6 py-3 bg-gray-900 text-white rounded-xl hover:opacity-90 transition-opacity disabled:opacity-50"
         >
           <Save className="w-4 h-4" />
-          Save Changes
+          {loading ? 'Saving...' : 'Save Changes'}
         </button>
       </div>
     </div>

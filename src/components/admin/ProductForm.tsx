@@ -1,6 +1,6 @@
-import { useState, useRef } from 'react'
-import { X, Plus, Upload, ImageIcon, Loader2 } from 'lucide-react'
-import { db, type Product } from '../../lib/supabase'
+import { useState, useRef, useEffect } from 'react'
+import { X, Plus, Upload, ImageIcon, Loader2, Link as LinkIcon, Tag } from 'lucide-react'
+import { db, type Product, type Category } from '../../lib/supabase'
 import toast from 'react-hot-toast'
 
 interface ProductFormProps {
@@ -9,12 +9,16 @@ interface ProductFormProps {
   onSuccess: () => void
 }
 
-const CATEGORIES = ['tops', 'bottoms', 'hoodies', 'jackets', 'accessories']
+const PRESET_TAGS = ['Sale', 'Hot', 'New', 'Limited', 'Bestseller']
 
 export default function ProductForm({ product, onClose, onSuccess }: ProductFormProps) {
+  const [categories, setCategories] = useState<Category[]>([])
+  const [newCategory, setNewCategory] = useState('')
+  const [imageUrlInput, setImageUrlInput] = useState('')
+
   const [form, setForm] = useState<Partial<Product>>({
     name: product?.name || '',
-    category: product?.category || 'tops',
+    category: product?.category || '',
     price: product?.price || 0,
     original_price: product?.original_price || null,
     image_url: product?.image_url || '',
@@ -22,6 +26,7 @@ export default function ProductForm({ product, onClose, onSuccess }: ProductForm
     sizes: product?.sizes || [],
     size_stock: product?.size_stock || {},
     badge: product?.badge || '',
+    tags: product?.tags || [],
     description: product?.description || '',
     is_preorder: product?.is_preorder || false,
     preorder_date: product?.preorder_date || '',
@@ -35,6 +40,24 @@ export default function ProductForm({ product, onClose, onSuccess }: ProductForm
   const [uploading, setUploading] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
+  // Load categories on mount
+  useEffect(() => {
+    loadCategories()
+  }, [])
+
+  const loadCategories = async () => {
+    try {
+      const data = await db.getCategories()
+      setCategories(data)
+      // Set default category if none selected and categories exist
+      if (!form.category && data.length > 0 && !product) {
+        setForm(prev => ({ ...prev, category: data[0].slug }))
+      }
+    } catch (err) {
+      console.error('Failed to load categories:', err)
+    }
+  }
+
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value, type } = e.target
     if (type === 'checkbox') {
@@ -45,6 +68,20 @@ export default function ProductForm({ product, onClose, onSuccess }: ProductForm
         ...prev,
         [name]: type === 'number' ? Number(value) : value,
       }))
+    }
+  }
+
+  const addCategory = async () => {
+    if (!newCategory.trim()) return
+    const slug = newCategory.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '')
+    try {
+      await db.createCategory({ name: newCategory.trim(), slug })
+      setNewCategory('')
+      await loadCategories()
+      setForm(prev => ({ ...prev, category: slug }))
+      toast.success('Category added!')
+    } catch (err) {
+      toast.error('Failed to add category')
     }
   }
 
@@ -97,6 +134,17 @@ export default function ProductForm({ product, onClose, onSuccess }: ProductForm
     }
   }
 
+  const addImageUrl = () => {
+    if (!imageUrlInput.trim()) return
+    setForm(prev => ({
+      ...prev,
+      image_url: prev.image_url || imageUrlInput,
+      images: [...(prev.images || []), imageUrlInput]
+    }))
+    setImageUrlInput('')
+    toast.success('Image URL added!')
+  }
+
   const removeImage = (url: string) => {
     setForm(prev => ({
       ...prev,
@@ -107,6 +155,27 @@ export default function ProductForm({ product, onClose, onSuccess }: ProductForm
 
   const setPrimaryImage = (url: string) => {
     setForm(prev => ({ ...prev, image_url: url }))
+  }
+
+  const toggleTag = (tag: string) => {
+    setForm(prev => {
+      const currentTags = prev.tags || []
+      if (currentTags.includes(tag)) {
+        return { ...prev, tags: currentTags.filter(t => t !== tag) }
+      }
+      return { ...prev, tags: [...currentTags, tag] }
+    })
+  }
+
+  const addCustomTag = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      e.preventDefault()
+      const tag = e.currentTarget.value.trim()
+      if (tag && !form.tags?.includes(tag)) {
+        setForm(prev => ({ ...prev, tags: [...(prev.tags || []), tag] }))
+        e.currentTarget.value = ''
+      }
+    }
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -125,7 +194,7 @@ export default function ProductForm({ product, onClose, onSuccess }: ProductForm
         await db.updateProduct(product.id, data)
         toast.success('Product updated!')
       } else {
-        await db.createProduct(data as Omit<Product, 'id' | 'created_at' | 'updated_at'>)
+        await db.createProduct(data as Omit<Product, 'id' | 'created_at' | 'updated_at' | 'stock'>)
         toast.success('Product created!')
       }
       onSuccess()
@@ -151,30 +220,52 @@ export default function ProductForm({ product, onClose, onSuccess }: ProductForm
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-5">
-          {/* Name & Category */}
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="text-sm font-medium dark:text-gray-300">Name</label>
-              <input
-                name="name"
-                value={form.name}
-                onChange={handleChange}
-                required
-                className="w-full mt-1 px-3 py-2 border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-white"
-              />
-            </div>
-            <div>
-              <label className="text-sm font-medium dark:text-gray-300">Category</label>
+          {/* Name */}
+          <div>
+            <label className="text-sm font-medium dark:text-gray-300">Product Name</label>
+            <input
+              name="name"
+              value={form.name}
+              onChange={handleChange}
+              required
+              className="w-full mt-1 px-3 py-2 border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+              placeholder="Enter product name"
+            />
+          </div>
+
+          {/* Category - Dynamic */}
+          <div>
+            <label className="text-sm font-medium dark:text-gray-300">Category</label>
+            <div className="flex gap-2 mt-1">
               <select
                 name="category"
                 value={form.category}
                 onChange={handleChange}
-                className="w-full mt-1 px-3 py-2 border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                required
+                className="flex-1 px-3 py-2 border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-white"
               >
-                {CATEGORIES.map(c => (
-                  <option key={c} value={c}>{c.charAt(0).toUpperCase() + c.slice(1)}</option>
+                <option value="">Select category</option>
+                {categories.map(cat => (
+                  <option key={cat.id} value={cat.slug}>{cat.name}</option>
                 ))}
               </select>
+            </div>
+            {/* Add New Category */}
+            <div className="flex gap-2 mt-2">
+              <input
+                value={newCategory}
+                onChange={e => setNewCategory(e.target.value)}
+                placeholder="Add new category..."
+                className="flex-1 px-3 py-1.5 text-sm border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), addCategory())}
+              />
+              <button
+                type="button"
+                onClick={addCategory}
+                className="px-3 py-1.5 text-sm bg-gray-900 text-white rounded-lg hover:opacity-90"
+              >
+                <Plus className="w-4 h-4" />
+              </button>
             </div>
           </div>
 
@@ -203,10 +294,11 @@ export default function ProductForm({ product, onClose, onSuccess }: ProductForm
             </div>
           </div>
 
-          {/* Image Upload */}
+          {/* Images - Upload + URL */}
           <div>
             <label className="text-sm font-medium dark:text-gray-300 mb-2 block">Product Images</label>
 
+            {/* Upload Button */}
             <div className="flex items-center gap-3 mb-3">
               <input
                 ref={fileInputRef}
@@ -226,6 +318,28 @@ export default function ProductForm({ product, onClose, onSuccess }: ProductForm
               </button>
             </div>
 
+            {/* Add Image URL */}
+            <div className="flex gap-2 mb-3">
+              <div className="flex-1 relative">
+                <LinkIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                <input
+                  value={imageUrlInput}
+                  onChange={e => setImageUrlInput(e.target.value)}
+                  placeholder="Or paste image URL..."
+                  className="w-full pl-10 pr-3 py-2 text-sm border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                  onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), addImageUrl())}
+                />
+              </div>
+              <button
+                type="button"
+                onClick={addImageUrl}
+                className="px-3 py-2 text-sm bg-gray-100 dark:bg-gray-700 dark:text-white rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600"
+              >
+                Add URL
+              </button>
+            </div>
+
+            {/* Image Gallery */}
             {form.images && form.images.length > 0 && (
               <div className="flex flex-wrap gap-3">
                 {form.images.map((url, idx) => (
@@ -270,6 +384,47 @@ export default function ProductForm({ product, onClose, onSuccess }: ProductForm
               placeholder="New, Sale, Hot, Limited..."
               className="w-full mt-1 px-3 py-2 border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-white"
             />
+          </div>
+
+          {/* Tags / Collections */}
+          <div>
+            <label className="text-sm font-medium dark:text-gray-300 flex items-center gap-1 mb-2">
+              <Tag className="w-4 h-4" />
+              Collections / Tags
+            </label>
+            <div className="flex flex-wrap gap-2 mb-2">
+              {PRESET_TAGS.map(tag => (
+                <button
+                  key={tag}
+                  type="button"
+                  onClick={() => toggleTag(tag)}
+                  className={`px-3 py-1 rounded-full text-sm transition-colors ${
+                    form.tags?.includes(tag)
+                      ? 'bg-lit-accent dark:bg-nova-accent text-white'
+                      : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+                  }`}
+                >
+                  {tag}
+                </button>
+              ))}
+            </div>
+            <input
+              placeholder="Add custom tag and press Enter..."
+              className="w-full px-3 py-2 text-sm border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+              onKeyDown={addCustomTag}
+            />
+            {form.tags && form.tags.length > 0 && (
+              <div className="flex flex-wrap gap-1 mt-2">
+                {form.tags.map(tag => (
+                  <span key={tag} className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded text-xs">
+                    {tag}
+                    <button type="button" onClick={() => toggleTag(tag)} className="hover:text-red-500">
+                      <X className="w-3 h-3" />
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* Sizes with Stock */}

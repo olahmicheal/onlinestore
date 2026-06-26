@@ -3,6 +3,7 @@ import { X, Clock, AlertTriangle } from 'lucide-react'
 import { useCart } from '../../contexts/CartContext'
 import { formatPrice } from '../../lib/utils'
 import type { Product } from '../../lib/supabase'
+import ProductReviews from './ProductReviews'
 
 interface ProductModalProps {
   product: Product | null
@@ -12,6 +13,7 @@ interface ProductModalProps {
 
 export default function ProductModal({ product, isOpen, onClose }: ProductModalProps) {
   const [selectedSize, setSelectedSize] = useState<string | null>(null)
+  const [showReviews, setShowReviews] = useState(false)
   const { addItem } = useCart()
 
   if (!isOpen || !product) return null
@@ -76,6 +78,17 @@ export default function ProductModal({ product, isOpen, onClose }: ProductModalP
               </span>
             )}
           </div>
+
+          {/* Tags */}
+          {product.tags && product.tags.length > 0 && (
+            <div className="flex flex-wrap gap-1 mt-2">
+              {product.tags.map(tag => (
+                <span key={tag} className="px-2 py-0.5 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded text-xs font-medium">
+                  {tag}
+                </span>
+              ))}
+            </div>
+          )}
 
           {/* Preorder Info */}
           {product.is_preorder && (
@@ -160,7 +173,22 @@ export default function ProductModal({ product, isOpen, onClose }: ProductModalP
           >
             {product.is_preorder ? 'Pre-order Now' : 'Add to Cart'}
           </button>
+
+          {/* Reviews Toggle */}
+          <button
+            onClick={() => setShowReviews(!showReviews)}
+            className="w-full mt-4 py-2 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors"
+          >
+            {showReviews ? 'Hide Reviews' : 'Show Reviews'}
+          </button>
         </div>
+
+        {/* Reviews Section */}
+        {showReviews && (
+          <div className="px-5 pb-5">
+            <ProductReviews productId={product.id} />
+          </div>
+        )}
       </div>
     </div>
   )

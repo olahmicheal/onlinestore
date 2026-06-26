@@ -1,24 +1,47 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ArrowLeft } from 'lucide-react'
+import { ArrowLeft, CreditCard, MessageCircle, Copy, Check, Truck, MapPin, Phone, Mail, User } from 'lucide-react'
 import { useCart } from '../../contexts/CartContext'
-import { db } from '../../lib/supabase'
-import { formatPrice } from '../../lib/utils'
+import { db, generateWhatsAppLink, type PaymentSettings, type StoreSettings } from '../../lib/supabase'
 import toast from 'react-hot-toast'
 
 export default function CheckoutPage() {
   const navigate = useNavigate()
   const { items, subtotal, clearCart } = useCart()
-  const [loading, setLoading] = useState(false)
+
   const [form, setForm] = useState({
+    name: '',
     email: '',
-    firstName: '',
-    lastName: '',
+    phone: '',
     address: '',
     city: '',
     postalCode: '',
-    phone: '',
   })
+
+  const [paymentSettings, setPaymentSettings] = useState<PaymentSettings | null>(null)
+  const [storeSettings, setStoreSettings] = useState<StoreSettings | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [orderComplete, setOrderComplete] = useState(false)
+  const [orderData, setOrderData] = useState<any>(null)
+  const [copied, setCopied] = useState(false)
+
+  // Load settings
+  useState(() => {
+    const loadSettings = async () => {
+      try {
+        const store = await db.getSettings('store') as StoreSettings
+        const payment = await db.getSettings('payment') as PaymentSettings
+        setStoreSettings(store)
+        setPaymentSettings(payment)
+      } catch (err) {
+        console.error('Failed to load settings:', err)
+      }
+    }
+    loadSettings()
+  })
+
+  const shipping = 2500
+  const total = subtotal + shipping
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setForm(prev => ({ ...prev, [e.target.name]: e.target.value }))
@@ -27,7 +50,7 @@ export default function CheckoutPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (items.length === 0) {
-      toast.error('Your cart is empty')
+      toast.error('Your cart is empty!')
       return
     }
 
@@ -35,7 +58,7 @@ export default function CheckoutPage() {
     try {
       const order = await db.createOrder({
         customer_email: form.email,
-        customer_name: `${form.firstName} ${form.lastName}`,
+        customer_name: form.name,
         customer_phone: form.phone,
         shipping_address: form.address,
         city: form.city,
@@ -49,28 +72,115 @@ export default function CheckoutPage() {
           image_url: item.imageUrl,
         })),
         subtotal,
-        shipping: 0,
+        shipping,
         tax: 0,
-        total: subtotal,
+        total,
+        payment_method: 'bank_transfer',
+        payment_status: 'pending',
       })
 
+      setOrderData(order)
+      setOrderComplete(true)
       clearCart()
-      navigate('/order-success', { state: { orderId: order.id } })
+      toast.success('Order placed successfully!')
     } catch (err) {
+      console.error('Order failed:', err)
       toast.error('Failed to place order. Please try again.')
-      console.error(err)
     } finally {
       setLoading(false)
     }
   }
 
-  if (items.length === 0) {
+  const copyAccountNumber = () => {
+    if (paymentSettings?.account_number) {
+      navigator.clipboard.writeText(paymentSettings.account_number)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+      toast.success('Account number copied!')
+    }
+  }
+
+  const getWhatsAppLink = () => {
+    if (!storeSettings?.whatsapp || !orderData) return '#'
+    return generateWhatsAppLink(storeSettings.whatsapp, orderData)
+  }
+
+  if (orderComplete && orderData) {
     return (
-      <div className="max-w-xl mx-auto p-8 text-center">
-        <p className="text-lit-dim dark:text-nova-dim">Your cart is empty</p>
-        <button 
+      <div className="max-w-xl mx-auto px-4 py-8">
+        <div className="text-center mb-8">
+          <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+            <Check className="w-8 h-8 text-green-600" />
+          </div>
+          <h1 className="text-2xl font-bold dark:text-white mb-2">Order Placed!</h1>
+          <p className="text-gray-500 dark:text-gray-400">Order ID: {orderData.id}</p>
+        </div>
+
+        {/* Payment Details */}
+        <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6 mb-6">
+          <h2 className="font-semibold dark:text-white mb-4 flex items-center gap-2">
+            <CreditCard className="w-5 h-5" />
+            Payment Details
+          </h2>
+
+          {paymentSettings ? (
+            <div className="space-y-3">
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-500 dark:text-gray-400">Bank</span>
+                <span className="font-medium dark:text-white">{paymentSettings.bank_name}</span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-500 dark:text-gray-400">Account Name</span>
+                <span className="font-medium dark:text-white">{paymentSettings.account_name}</span>
+              </div>
+              <div className="flex items-center justify-between text-sm bg-gray-50 dark:bg-gray-700 p-3 rounded-lg">
+                <div>
+                  <span className="text-gray-500 dark:text-gray-400 block text-xs">Account Number</span>
+                  <span className="font-mono font-bold text-lg dark:text-white">{paymentSettings.account_number}</span>
+                </div>
+                <button
+                  onClick={copyAccountNumber}
+                  className="p-2 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg transition-colors"
+                >
+                  {copied ? <Check className="w-5 h-5 text-green-500" /> : <Copy className="w-5 h-5 dark:text-white" />}
+                </button>
+              </div>
+              {paymentSettings.additional_info && (
+                <p className="text-xs text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 p-2 rounded">
+                  {paymentSettings.additional_info}
+                </p>
+              )}
+            </div>
+          ) : (
+            <p className="text-sm text-gray-500 dark:text-gray-400">Payment details not available. Contact support.</p>
+          )}
+
+          <div className="border-t border-gray-200 dark:border-gray-700 mt-4 pt-4">
+            <div className="flex justify-between text-sm mb-2">
+              <span className="text-gray-500 dark:text-gray-400">Amount to Pay</span>
+              <span className="font-bold text-lg dark:text-white">₦{total.toLocaleString()}</span>
+            </div>
+          </div>
+        </div>
+
+        {/* WhatsApp Contact */}
+        <a
+          href={getWhatsAppLink()}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex items-center justify-center gap-2 w-full py-4 bg-green-500 text-white rounded-xl font-semibold hover:bg-green-600 transition-colors mb-4"
+        >
+          <MessageCircle className="w-5 h-5" />
+          Send Payment Receipt via WhatsApp
+        </a>
+
+        <p className="text-xs text-center text-gray-500 dark:text-gray-400 mb-6">
+          Click the button above to open WhatsApp and send your payment receipt. Include your order ID.
+        </p>
+
+        <button
           onClick={() => navigate('/')}
-          className="mt-4 text-lit-accent dark:text-nova-accent font-medium"
+          className="w-full py-3 border border-gray-300 dark:border-gray-600 rounded-xl text-sm font-medium dark:text-white hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
         >
           Continue Shopping
         </button>
@@ -80,135 +190,140 @@ export default function CheckoutPage() {
 
   return (
     <div className="max-w-xl mx-auto px-4 py-6">
-      <button 
+      {/* Back */}
+      <button
         onClick={() => navigate(-1)}
-        className="flex items-center gap-2 text-sm text-lit-dim dark:text-nova-dim mb-6"
+        className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400 mb-6"
       >
         <ArrowLeft className="w-4 h-4" />
-        Back to shop
+        Back to Cart
       </button>
 
-      <h1 className="text-2xl font-semibold dark:text-white mb-6">Checkout</h1>
+      <h1 className="text-2xl font-bold dark:text-white mb-6">Checkout</h1>
 
-      <form onSubmit={handleSubmit} className="space-y-4">
-        <div>
-          <label className="text-xs text-lit-dim dark:text-nova-dim uppercase tracking-wider">Email</label>
-          <input
-            type="email"
-            name="email"
-            required
-            value={form.email}
-            onChange={handleChange}
-            className="w-full mt-1 px-4 py-3 border border-lit-border dark:border-nova-border rounded-xl bg-lit-surface dark:bg-nova-surface2 dark:text-white focus:outline-none focus:border-lit-accent dark:focus:border-nova-accent transition-colors"
-            placeholder="you@example.com"
-          />
+      {/* Order Summary */}
+      <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4 mb-6">
+        <h2 className="font-semibold dark:text-white mb-3">Order Summary ({items.length} items)</h2>
+        <div className="space-y-2">
+          {items.map((item, idx) => (
+            <div key={idx} className="flex justify-between text-sm">
+              <span className="dark:text-gray-300">{item.name} ({item.size}) x{item.quantity}</span>
+              <span className="dark:text-white">₦{(item.price * item.quantity).toLocaleString()}</span>
+            </div>
+          ))}
         </div>
+        <div className="border-t border-gray-200 dark:border-gray-700 mt-3 pt-3 space-y-1">
+          <div className="flex justify-between text-sm">
+            <span className="text-gray-500 dark:text-gray-400">Subtotal</span>
+            <span className="dark:text-white">₦{subtotal.toLocaleString()}</span>
+          </div>
+          <div className="flex justify-between text-sm">
+            <span className="text-gray-500 dark:text-gray-400">Shipping</span>
+            <span className="dark:text-white">₦{shipping.toLocaleString()}</span>
+          </div>
+          <div className="flex justify-between font-bold">
+            <span className="dark:text-white">Total</span>
+            <span className="dark:text-white">₦{total.toLocaleString()}</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Shipping Form */}
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <h2 className="font-semibold dark:text-white flex items-center gap-2">
+          <Truck className="w-5 h-5" />
+          Shipping Details
+        </h2>
 
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <label className="text-xs text-lit-dim dark:text-nova-dim uppercase tracking-wider">First Name</label>
+            <label className="text-sm text-gray-500 dark:text-gray-400 flex items-center gap-1">
+              <User className="w-3 h-3" /> Full Name
+            </label>
             <input
-              type="text"
-              name="firstName"
-              required
-              value={form.firstName}
+              name="name"
+              value={form.name}
               onChange={handleChange}
-              className="w-full mt-1 px-4 py-3 border border-lit-border dark:border-nova-border rounded-xl bg-lit-surface dark:bg-nova-surface2 dark:text-white focus:outline-none focus:border-lit-accent dark:focus:border-nova-accent"
-              placeholder="John"
+              required
+              className="w-full mt-1 px-3 py-2 border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+              placeholder="John Doe"
             />
           </div>
           <div>
-            <label className="text-xs text-lit-dim dark:text-nova-dim uppercase tracking-wider">Last Name</label>
+            <label className="text-sm text-gray-500 dark:text-gray-400 flex items-center gap-1">
+              <Phone className="w-3 h-3" /> Phone
+            </label>
             <input
-              type="text"
-              name="lastName"
-              required
-              value={form.lastName}
+              name="phone"
+              value={form.phone}
               onChange={handleChange}
-              className="w-full mt-1 px-4 py-3 border border-lit-border dark:border-nova-border rounded-xl bg-lit-surface dark:bg-nova-surface2 dark:text-white focus:outline-none focus:border-lit-accent dark:focus:border-nova-accent"
-              placeholder="Doe"
+              required
+              className="w-full mt-1 px-3 py-2 border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+              placeholder="+234 801 234 5678"
             />
           </div>
         </div>
 
         <div>
-          <label className="text-xs text-lit-dim dark:text-nova-dim uppercase tracking-wider">Address</label>
+          <label className="text-sm text-gray-500 dark:text-gray-400 flex items-center gap-1">
+            <Mail className="w-3 h-3" /> Email
+          </label>
           <input
-            type="text"
-            name="address"
+            name="email"
+            type="email"
+            value={form.email}
+            onChange={handleChange}
             required
+            className="w-full mt-1 px-3 py-2 border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+            placeholder="john@example.com"
+          />
+        </div>
+
+        <div>
+          <label className="text-sm text-gray-500 dark:text-gray-400 flex items-center gap-1">
+            <MapPin className="w-3 h-3" /> Address
+          </label>
+          <input
+            name="address"
             value={form.address}
             onChange={handleChange}
-            className="w-full mt-1 px-4 py-3 border border-lit-border dark:border-nova-border rounded-xl bg-lit-surface dark:bg-nova-surface2 dark:text-white focus:outline-none focus:border-lit-accent dark:focus:border-nova-accent"
+            required
+            className="w-full mt-1 px-3 py-2 border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-white"
             placeholder="123 Street Name"
           />
         </div>
 
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <label className="text-xs text-lit-dim dark:text-nova-dim uppercase tracking-wider">City</label>
+            <label className="text-sm text-gray-500 dark:text-gray-400">City</label>
             <input
-              type="text"
               name="city"
-              required
               value={form.city}
               onChange={handleChange}
-              className="w-full mt-1 px-4 py-3 border border-lit-border dark:border-nova-border rounded-xl bg-lit-surface dark:bg-nova-surface2 dark:text-white focus:outline-none focus:border-lit-accent dark:focus:border-nova-accent"
+              required
+              className="w-full mt-1 px-3 py-2 border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-white"
               placeholder="Lagos"
             />
           </div>
           <div>
-            <label className="text-xs text-lit-dim dark:text-nova-dim uppercase tracking-wider">Postal Code</label>
+            <label className="text-sm text-gray-500 dark:text-gray-400">Postal Code</label>
             <input
-              type="text"
               name="postalCode"
-              required
               value={form.postalCode}
               onChange={handleChange}
-              className="w-full mt-1 px-4 py-3 border border-lit-border dark:border-nova-border rounded-xl bg-lit-surface dark:bg-nova-surface2 dark:text-white focus:outline-none focus:border-lit-accent dark:focus:border-nova-accent"
+              required
+              className="w-full mt-1 px-3 py-2 border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-white"
               placeholder="100001"
             />
           </div>
         </div>
 
-        <div>
-          <label className="text-xs text-lit-dim dark:text-nova-dim uppercase tracking-wider">Phone</label>
-          <input
-            type="tel"
-            name="phone"
-            required
-            value={form.phone}
-            onChange={handleChange}
-            className="w-full mt-1 px-4 py-3 border border-lit-border dark:border-nova-border rounded-xl bg-lit-surface dark:bg-nova-surface2 dark:text-white focus:outline-none focus:border-lit-accent dark:focus:border-nova-accent"
-            placeholder="+234 80 1234 5678"
-          />
-        </div>
-
-        {/* Order Summary */}
-        <div className="bg-lit-surface dark:bg-nova-surface border border-lit-border dark:border-nova-border rounded-xl p-4 mt-6">
-          <h3 className="font-semibold dark:text-white mb-3">Order Summary</h3>
-          {items.map(item => (
-            <div key={`${item.productId}-${item.size}`} className="flex items-center gap-3 py-2 border-b border-lit-border dark:border-nova-border last:border-0">
-              <img src={item.imageUrl} alt={item.name} className="w-12 h-14 object-cover rounded-lg" />
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium dark:text-white truncate">{item.name}</p>
-                <p className="text-xs text-lit-dim dark:text-nova-dim">Qty: {item.quantity} · Size: {item.size}</p>
-              </div>
-              <p className="text-sm font-semibold dark:text-white">{formatPrice(item.price * item.quantity)}</p>
-            </div>
-          ))}
-          <div className="flex justify-between pt-3 mt-2 border-t border-lit-border dark:border-nova-border">
-            <span className="font-semibold dark:text-white">Total</span>
-            <span className="font-bold dark:text-white">{formatPrice(subtotal)}</span>
-          </div>
-        </div>
-
         <button
           type="submit"
-          disabled={loading}
-          className="w-full py-4 bg-lit-accent dark:bg-nova-accent text-white font-semibold uppercase tracking-wider rounded-xl hover:opacity-90 transition-opacity disabled:opacity-50"
+          disabled={loading || items.length === 0}
+          className="w-full py-4 bg-lit-accent dark:bg-nova-accent text-white rounded-xl font-semibold hover:opacity-90 disabled:opacity-50 transition-opacity"
         >
-          {loading ? 'Processing...' : 'Place Order'}
+          {loading ? 'Placing Order...' : `Place Order - ₦${total.toLocaleString()}`}
         </button>
       </form>
     </div>
