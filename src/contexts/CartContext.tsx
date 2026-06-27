@@ -12,7 +12,7 @@ export interface CartItem {
 
 interface CartContextType {
   items: CartItem[]
-  addItem: (item: Omit<CartItem, 'quantity'>) => void
+  addItem: (item: Omit<CartItem, 'quantity'>, quantity?: number) => void
   removeItem: (productId: string, size: string) => void
   updateQuantity: (productId: string, size: string, quantity: number) => void
   clearCart: () => void
@@ -31,18 +31,18 @@ export function CartProvider({ children }: { children: ReactNode }) {
   })
   const [isCartOpen, setIsCartOpen] = useState(false)
 
-  const addItem = useCallback((item: Omit<CartItem, 'quantity'>) => {
+  const addItem = useCallback((item: Omit<CartItem, 'quantity'>, quantity: number = 1) => {
     setItems(prev => {
       const existing = prev.find(i => i.productId === item.productId && i.size === item.size)
       let newItems: CartItem[]
       if (existing) {
         newItems = prev.map(i =>
           i.productId === item.productId && i.size === item.size
-            ? { ...i, quantity: i.quantity + 1 }
+            ? { ...i, quantity: i.quantity + quantity }
             : i
         )
       } else {
-        newItems = [...prev, { ...item, quantity: 1 }]
+        newItems = [...prev, { ...item, quantity }]
       }
       localStorage.setItem('store-cart', JSON.stringify(newItems))
       toast.success('Added to cart!')

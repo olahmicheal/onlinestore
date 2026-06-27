@@ -1,4 +1,4 @@
-import { X, Minus, Plus, Trash2 } from 'lucide-react'
+import { X, Minus, Plus, Trash2, ShoppingBag } from 'lucide-react'
 import { useCart } from '../../contexts/CartContext'
 import { useTheme } from '../../contexts/ThemeContext'
 import { formatPrice } from '../../lib/utils'
@@ -35,7 +35,7 @@ export default function CartDrawer() {
         <div className="flex-1 overflow-y-auto p-4">
           {items.length === 0 ? (
             <div className="text-center py-12 text-lit-dim dark:text-nova-dim">
-              <ShoppingBagIcon className="w-12 h-12 mx-auto mb-4 opacity-30" />
+              <ShoppingBag className="w-12 h-12 mx-auto mb-4 opacity-30" />
               <p>Your cart is empty</p>
               <p className="text-sm mt-1">Add some fire pieces!</p>
             </div>
@@ -101,15 +101,5 @@ export default function CartDrawer() {
         )}
       </div>
     </>
-  )
-}
-
-function ShoppingBagIcon({ className }: { className?: string }) {
-  return (
-    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-      <path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z" />
-      <line x1="3" y1="6" x2="21" y2="6" />
-      <path d="M16 10a4 4 0 0 1-8 0" />
-    </svg>
   )
 }

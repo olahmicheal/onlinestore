@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, Clock, AlertTriangle } from 'lucide-react'
+import { ArrowLeft, Clock, Minus, Plus } from 'lucide-react'
 import { useCart } from '../../contexts/CartContext'
 import { db, type Product } from '../../lib/supabase'
 import { formatPrice } from '../../lib/utils'
@@ -11,6 +11,7 @@ export default function ProductPage() {
   const { addItem } = useCart()
   const [product, setProduct] = useState<Product | null>(null)
   const [selectedSize, setSelectedSize] = useState<string | null>(null)
+  const [quantity, setQuantity] = useState(1)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -38,18 +39,32 @@ export default function ProductPage() {
 
   const getSizeStock = (size: string) => product?.size_stock?.[size] ?? 0
   const isOutOfStock = (size: string) => getSizeStock(size) <= 0
-  const isLowStock = (size: string) => getSizeStock(size) > 0 && getSizeStock(size) <= 3
+
+  // Only show sizes that are in stock
+  const availableSizes = product?.sizes.filter(size => !isOutOfStock(size)) || []
+
+  const handleQuantityChange = (delta: number) => {
+    setQuantity(prev => {
+      const newQty = prev + delta
+      if (newQty < 1) return 1
+      if (selectedSize && newQty > getSizeStock(selectedSize)) {
+        return getSizeStock(selectedSize)
+      }
+      return newQty
+    })
+  }
 
   const handleAddToCart = () => {
-    if (!product || !selectedSize || isOutOfStock(selectedSize)) return
+    if (!product || !selectedSize) return
     addItem({
       productId: product.id,
       name: product.name,
       size: selectedSize,
       price: product.price,
       imageUrl: product.image_url,
-    })
+    }, quantity)
     setSelectedSize(null)
+    setQuantity(1)
   }
 
   if (loading) {
@@ -129,59 +144,72 @@ export default function ProductPage() {
           {product.description}
         </p>
 
-        {/* Sizes with Stock */}
-        <div className="mt-5">
-          <label className="text-xs text-lit-dim dark:text-nova-dim uppercase tracking-wider font-medium">
-            Select Size
-          </label>
-          <div className="flex flex-wrap gap-2 mt-2">
-            {product.sizes.map((size) => {
-              const stock = getSizeStock(size)
-              const outOfStock = stock <= 0
-              const lowStock = stock > 0 && stock <= 3
-
-              return (
+        {/* Sizes - Only show available (in-stock) sizes */}
+        {availableSizes.length > 0 && (
+          <div className="mt-5">
+            <label className="text-xs text-lit-dim dark:text-nova-dim uppercase tracking-wider font-medium">
+              Select Size
+            </label>
+            <div className="flex flex-wrap gap-2 mt-2">
+              {availableSizes.map((size) => (
                 <button
                   key={size}
-                  onClick={() => !outOfStock && setSelectedSize(size)}
-                  disabled={outOfStock}
-                  className={`relative min-w-[60px] px-4 py-2.5 border-2 rounded-lg font-medium text-sm transition-all ${
+                  onClick={() => {
+                    setSelectedSize(size)
+                    setQuantity(1)
+                  }}
+                  className={`min-w-[60px] px-4 py-2.5 border-2 rounded-lg font-medium text-sm transition-all ${
                     selectedSize === size
                       ? 'bg-lit-accent dark:bg-nova-accent text-white border-lit-accent dark:border-nova-accent'
-                      : outOfStock
-                        ? 'border-gray-200 dark:border-gray-700 text-gray-300 dark:text-gray-600 cursor-not-allowed bg-gray-50 dark:bg-gray-800/50'
-                        : lowStock
-                          ? 'border-orange-300 dark:border-orange-700 text-orange-600 dark:text-orange-400 hover:border-orange-400 dark:hover:border-orange-600'
-                          : 'border-lit-border dark:border-nova-border dark:text-white hover:border-lit-text dark:hover:border-nova-text'
+                      : 'border-lit-border dark:border-nova-border dark:text-white hover:border-lit-text dark:hover:border-nova-text'
                   }`}
                 >
-                  <span>{size}</span>
-                  {outOfStock && (
-                    <span className="absolute -top-1.5 -right-1.5 bg-red-500 text-white text-[8px] px-1 rounded-full">OUT</span>
-                  )}
-                  {lowStock && !outOfStock && (
-                    <span className="absolute -top-1.5 -right-1.5 bg-orange-500 text-white text-[8px] px-1 rounded-full">{stock}</span>
-                  )}
+                  {size}
                 </button>
-              )
-            })}
-          </div>
-
-          {/* Stock Alert */}
-          {selectedSize && isLowStock(selectedSize) && (
-            <div className="flex items-center gap-1.5 mt-2 text-orange-600 dark:text-orange-400 text-xs">
-              <AlertTriangle className="w-3.5 h-3.5" />
-              Only {getSizeStock(selectedSize)} left in stock!
+              ))}
             </div>
-          )}
-        </div>
+          </div>
+        )}
+
+        {availableSizes.length === 0 && !product.is_preorder && (
+          <div className="mt-5 p-4 bg-gray-100 dark:bg-gray-800 rounded-lg text-center">
+            <p className="text-sm text-gray-500 dark:text-gray-400">
+              This item is currently unavailable.
+            </p>
+          </div>
+        )}
+
+        {/* Quantity Selector */}
+        {selectedSize && (
+          <div className="mt-5">
+            <label className="text-xs text-lit-dim dark:text-nova-dim uppercase tracking-wider font-medium">
+              Quantity
+            </label>
+            <div className="flex items-center gap-3 mt-2">
+              <button
+                onClick={() => handleQuantityChange(-1)}
+                disabled={quantity <= 1}
+                className="w-10 h-10 rounded-lg border border-lit-border dark:border-nova-border flex items-center justify-center disabled:opacity-30 dark:text-white hover:bg-lit-border/20 dark:hover:bg-nova-border/20 transition-colors"
+              >
+                <Minus className="w-4 h-4" />
+              </button>
+              <span className="w-8 text-center font-semibold dark:text-white">{quantity}</span>
+              <button
+                onClick={() => handleQuantityChange(1)}
+                className="w-10 h-10 rounded-lg border border-lit-border dark:border-nova-border flex items-center justify-center dark:text-white hover:bg-lit-border/20 dark:hover:bg-nova-border/20 transition-colors"
+              >
+                <Plus className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Add to Cart */}
         <button
           onClick={handleAddToCart}
-          disabled={!selectedSize || isOutOfStock(selectedSize || '')}
+          disabled={!selectedSize}
           className={`w-full mt-6 py-4 rounded-xl font-semibold uppercase tracking-wider text-sm transition-all ${
-            selectedSize && !isOutOfStock(selectedSize)
+            selectedSize
               ? 'bg-lit-accent dark:bg-nova-accent text-white hover:opacity-90'
               : 'bg-lit-border dark:bg-nova-border text-lit-dim dark:text-nova-dim cursor-not-allowed'
           }`}

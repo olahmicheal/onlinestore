@@ -36,14 +36,7 @@ export default function ProductCard({ product }: ProductCardProps) {
           </span>
         )}
 
-        {/* Out of Stock Overlay */}
-        {isOutOfStock && (
-          <div className="absolute inset-0 bg-black/60 flex items-center justify-center">
-            <span className="text-white font-bold text-sm uppercase tracking-wider">Out of Stock</span>
-          </div>
-        )}
-
-        {/* Quick Add Button */}
+        {/* Quick Add Button - hidden if out of stock */}
         {!isOutOfStock && (
           <div className="absolute bottom-3 right-3">
             <div className="w-10 h-10 rounded-full bg-lit-accent dark:bg-nova-accent text-white flex items-center justify-center shadow-lg">
